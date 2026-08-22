@@ -79,6 +79,16 @@ input,select{font-family:inherit;}
 .hero h1{font-family:var(--display); font-weight:700; font-size:clamp(2rem,3.8vw,3.1rem); line-height:1.1; letter-spacing:-0.02em; margin-bottom:20px;}
 .hero h1 em{font-style:normal; color:var(--gold-bright);}
 .hero p{color:var(--text-dim); font-size:1.03rem; max-width:48ch; margin-bottom:30px;}
+.promo-strip{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+.promo-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  background:linear-gradient(135deg, rgba(242,165,34,0.14), rgba(242,165,34,0.04));
+  border:1px solid rgba(242,165,34,0.4); color:var(--gold-bright);
+  font-family:var(--display); font-weight:600; font-size:0.86rem;
+  padding:9px 16px; border-radius:999px;
+}
+.promo-pill .ic{font-size:1rem;}
+.promo-caption{font-family:var(--mono); font-size:0.74rem; color:var(--text-faint); margin-bottom:22px;}
 .hero-actions{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:32px;}
 .btn-primary{
   background:var(--gold); color:#14100B; font-weight:600; font-size:0.95rem;
@@ -317,6 +327,11 @@ tr:hover td{background:rgba(255,255,255,0.02);}
   <div>
     <div class="hero-eyebrow"><span class="pulse-dot"></span> Presupuesto + diagnóstico + asesoramiento · Córdoba, Argentina</div>
     <h1>No busques <em>"cuánto cuesta"</em>. Armá tu presupuesto con un electricista real detrás.</h1>
+    <div class="promo-strip">
+      <div class="promo-pill"><span class="ic">🎁</span> 10% OFF en tu primer trabajo</div>
+      <div class="promo-pill"><span class="ic">🎖️</span> Descuento especial jubilados</div>
+    </div>
+    <p class="promo-caption">Beneficios reales, para que empieces con confianza. Se confirman al coordinar por WhatsApp.</p>
     <p>Contanos qué necesitás — o qué te está pasando — y armamos tu presupuesto al instante, con mano de obra y materiales reales. Después seguimos por WhatsApp con fotos y asesoramiento, sin cargo.</p>
     <div class="hero-actions">
       <a href="#intencion" class="btn-primary">Armar mi presupuesto →</a>
@@ -500,7 +515,7 @@ tr:hover td{background:rgba(255,255,255,0.02);}
     <div class="trust-card">
       <div class="num">02</div>
       <h4>Se pueden hacer descuentos</h4>
-      <p>En trabajos de mayor volumen o varios servicios juntos, consultá — hay margen para conversar el valor final.</p>
+      <p>10% OFF en tu primer trabajo y descuento especial para jubilados. También hay margen en trabajos de mayor volumen o varios servicios juntos — consultá.</p>
     </div>
     <div class="trust-card">
       <div class="num">03</div>
@@ -521,7 +536,7 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 
 <footer>
   <div class="footer-grid">
-    <div class="footer-item"><div class="label">WhatsApp</div>351 760-2946</div>
+    <div class="footer-item"><div class="label">WhatsApp</div>351 760-2947</div>
     <div class="footer-item"><div class="label">Zona de cobertura</div>Córdoba Capital</div>
     <div class="footer-item"><div class="label">Atención</div>Todos los días de 7 a 20 hs</div>
     <div class="footer-item"><div class="label">Matrícula</div>ERSeP N° 11622 · Habilitación hasta 10 KVA</div>
@@ -550,7 +565,8 @@ tr:hover td{background:rgba(255,255,255,0.02);}
     <p class="modal-sub">Registros capturados por la calculadora en este navegador.</p>
 
     <div class="admin-note">
-      ⚠️ <strong>Nota de prototipo:</strong> esta demo guarda los registros en el almacenamiento local de tu sesión de Claude para que puedas probar el flujo. Para la landing pública real, estos mismos datos deben guardarse en un backend accesible desde cualquier navegador (por ejemplo, Google Sheets) — desde ahí siempre vas a poder descargar un .xlsx idéntico al que ves acá.
+      📋 <strong>El CRM real está en Google Sheets</strong> — cada presupuesto guardado se escribe automáticamente ahí, con estado editable (Nuevo, Contactado, Presupuesto enviado, etc). Esta tabla de acá abajo es solo una copia local de esta sesión, útil para probar rápido.
+      <a href="https://docs.google.com/spreadsheets/d/180FcP_01b_TDS6-2zH1LVaoIv321ug0qo_I2Mb2hIGQ/edit" target="_blank" rel="noopener" style="color:var(--gold-bright); text-decoration:underline;">Abrir la planilla →</a>
     </div>
 
     <div class="metrics-grid" id="metricsGrid"></div>
@@ -588,6 +604,14 @@ const CATEGORIES = {
 
 const MATERIALS_MARKUP = 0.10; // margen de gestión sobre precio de referencia AS Electricidad
 const MATERIALS_MARKUP_FALLBACK = 0.35; // estimación para servicios sin materiales incluidos (sin catálogo específico asociado)
+
+/* ---------- CONFIG: CRM en Google Sheets ---------- */
+// 1) Desplegar el Apps Script como Aplicación Web (ver INSTRUCCIONES.md)
+// 2) Pegar acá la URL que termina en /exec
+const CONFIG = {
+  SHEET_WEBHOOK_URL: 'https://script.google.com/macros/s/AKfycbyWaROe_l8-r8AY638uZECDQLymJtyQLRp9wxzhpGO6Zw36IY5Y6KkVWguy24gcy1zgkA/exec',
+  SHEET_VIEW_URL: 'https://docs.google.com/spreadsheets/d/180FcP_01b_TDS6-2zH1LVaoIv321ug0qo_I2Mb2hIGQ/edit'
+};
 
 SERVICES.forEach((s,i)=> s.id = 'svc_'+i);
 MATERIALS_RAW.forEach((m,i)=> m.id = 'mat_'+i);
@@ -897,7 +921,8 @@ document.getElementById('closeDiagBtn').addEventListener('click', () => document
 document.getElementById('diagOverlay').addEventListener('click', (e) => { if(e.target.id==='diagOverlay') e.currentTarget.classList.remove('open'); });
 
 /* ---------- Save / WhatsApp ---------- */
-document.getElementById('guardarBtn').addEventListener('click', () => {
+document.getElementById('guardarBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('guardarBtn');
   const nombre = document.getElementById('fNombre').value.trim();
   const telefono = document.getElementById('fTelefono').value.trim();
   const zona = document.getElementById('fZona').value.trim();
@@ -922,44 +947,65 @@ document.getElementById('guardarBtn').addEventListener('click', () => {
     (selectedMaterials.length ? `\n\nMateriales:\n${selectedMaterials.join('\n')}` : '') +
     `\n\nEstimado: ${totalTxt}${est.hasExcludedMaterials ? ' (rango, materiales a cotizar)' : ''}\nTipo de instalación: ${state.tipoInstalacion || 'no especificado'}\nNombre: ${nombre}\nZona: ${zona}`
   );
-  document.getElementById('whatsappBtn').href = `https://wa.me/5493517602946?text=${waText}`;
-  document.getElementById('whatsappBtn').style.display = 'flex';
+  document.getElementById('whatsappBtn').href = `https://wa.me/5493517602947?text=${waText}`;
 
-  document.getElementById('savedConfirm').style.display = 'block';
-  document.getElementById('savedConfirm').textContent = '✓ Presupuesto guardado. Coordiná por WhatsApp cuando quieras.';
-  document.getElementById('gateCard').style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
 
-  saveLead({
+  await saveLead({
     nombre, telefono, zona, urgencia,
     tipoInstalacion: state.tipoInstalacion,
     selectedServices, selectedMaterials,
     labor: est.labor, matAdded: est.matAdded, low: est.low, high: est.high, grandTotal: est.grandTotal,
     hasExcludedMaterials: est.hasExcludedMaterials
   });
+
+  document.getElementById('whatsappBtn').style.display = 'flex';
+  document.getElementById('savedConfirm').style.display = 'block';
+  document.getElementById('savedConfirm').textContent = window._lastSaveWentToSheet
+    ? '✓ Presupuesto guardado en el sistema de Voltex. Coordiná por WhatsApp cuando quieras.'
+    : '✓ Listo. Coordiná por WhatsApp cuando quieras. (El registro automático todavía no está configurado — este presupuesto no quedó guardado en el sistema.)';
+  document.getElementById('gateCard').style.display = 'none';
 });
 
 /* ---------- Lead storage ---------- */
 async function saveLead(lead){
+  const record = {
+    fecha: new Date().toISOString(),
+    nombre: lead.nombre, telefono: lead.telefono, zona: lead.zona, urgencia: lead.urgencia,
+    tipo_instalacion: lead.tipoInstalacion || '',
+    servicios: lead.selectedServices.join(' | '),
+    materiales: lead.selectedMaterials.join(' | '),
+    mano_de_obra: Math.round(lead.labor),
+    materiales_agregados: Math.round(lead.matAdded),
+    estimado_bajo: Math.round(lead.low),
+    estimado_alto: Math.round(lead.high),
+    total: Math.round(lead.grandTotal),
+  };
+
+  let sheetOk = false;
+  if(CONFIG.SHEET_WEBHOOK_URL && !CONFIG.SHEET_WEBHOOK_URL.includes('PEGAR_ACA')){
+    try{
+      await fetch(CONFIG.SHEET_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script no responde headers CORS; no-cors evita el error, no leemos la respuesta
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(record)
+      });
+      sheetOk = true; // con no-cors no podemos confirmar el resultado real, asumimos éxito si no tiró excepción de red
+    }catch(e){ console.error('No se pudo enviar a la planilla', e); }
+  }
+
+  // Copia local (solo para previsualizar en "Panel del electricista" dentro de esta sesión)
   try{
     const id = 'lead_' + Date.now();
-    const record = {
-      id, fecha: new Date().toISOString(),
-      nombre: lead.nombre, telefono: lead.telefono, zona: lead.zona, urgencia: lead.urgencia,
-      tipo_instalacion: lead.tipoInstalacion || '',
-      servicios: lead.selectedServices.join(' | '),
-      materiales: lead.selectedMaterials.join(' | '),
-      mano_de_obra: Math.round(lead.labor),
-      materiales_agregados: Math.round(lead.matAdded),
-      estimado_bajo: Math.round(lead.low),
-      estimado_alto: Math.round(lead.high),
-      total: Math.round(lead.grandTotal),
-      estado: 'Nuevo',
-    };
-    await window.storage.set(id, JSON.stringify(record), false);
+    await window.storage.set(id, JSON.stringify({...record, id, estado:'Nuevo'}), false);
     const idxRaw = await getIndexSafe();
     idxRaw.push(id);
     await window.storage.set('leads_index', JSON.stringify(idxRaw), false);
-  }catch(e){ console.error('No se pudo guardar el registro', e); }
+  }catch(e){ /* window.storage no disponible fuera de Claude, no es crítico si la planilla ya lo recibió */ }
+
+  window._lastSaveWentToSheet = sheetOk;
 }
 async function getIndexSafe(){
   try{ const r = await window.storage.get('leads_index', false); return r ? JSON.parse(r.value) : []; }
