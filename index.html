@@ -311,9 +311,26 @@ tr:hover td{background:rgba(255,255,255,0.02);}
   .field-row{grid-template-columns:1fr;}
   .readout{flex-direction:column; align-items:flex-start;}
 }
+
+/* ============ SYNC BADGE ============ */
+.sync-badge{
+  position:fixed; bottom:14px; left:14px; z-index:60;
+  font-family:var(--mono); font-size:0.72rem;
+  padding:7px 12px; border-radius:999px; cursor:default;
+  background:var(--panel); border:1px solid var(--line); color:var(--text-dim);
+  display:flex; align-items:center; gap:7px; max-width:min(92vw,520px);
+}
+.sync-badge .dot{width:8px; height:8px; border-radius:50%; background:var(--text-faint); flex-shrink:0;}
+.sync-badge.ok .dot{background:var(--green);}
+.sync-badge.err .dot{background:var(--red);}
+.sync-badge.ok{border-color:rgba(79,146,112,0.5); color:var(--text);}
+.sync-badge.err{border-color:rgba(193,73,61,0.55); color:var(--text);}
+.sync-badge small{color:var(--text-faint); display:block; font-size:0.64rem; line-height:1.3;}
+
 </style>
 </head>
 <body class="blueprint-bg">
+<div id="syncBadge" class="sync-badge"><span class="dot"></span><span id="syncBadgeTxt">Sincronizando precios con la planilla…</span></div>
 
 <nav class="nav">
   <div class="brand">
@@ -891,15 +908,15 @@ function updateResultCard(){
 
 
 /* ---------- SINCRONIZACIÓN DE PRECIOS DESDE GOOGLE SHEETS ----------
-   Al cargar la página, lee la planilla de CONFIG.SHEET_VIEW_URL y pisa
-   los precios embebidos:
-     - Materiales: hojas 'Config' y 'AS_Catalogo' (por código o descripción)
-     - Mano de obra: hoja 'CMO_Precios_Web' (por descripción)
-   Si la planilla no responde, se usan los precios embebidos de respaldo.
-   REQUISITO: la planilla debe estar compartida como
-   "Cualquier persona con el vínculo - Lector".
+   Al cargar, lee la planilla de CONFIG.SHEET_VIEW_URL y pisa los precios
+   embebidos (materiales: Config / AS_Catalogo — mano de obra: CMO_Precios_Web).
+   REQUISITO CLAVE: la planilla debe estar compartida como
+   "Cualquier persona con el vínculo - Lector". Si no, el navegador recibe
+   una página de login de Google en vez de datos y la sincronización falla.
+   Agregar ?debug=1 a la URL para ver el detalle en la consola (F12).
 ------------------------------------------------------------------ */
-const PRICES_SYNC = { ok:false, actualizados:0, fuentes:[] };
+const PRICES_SYNC = { ok:false, actualizados:0, fuentes:[], errores:[], detalle:[] };
+const DEBUG_SYNC = new URLSearchParams(location.search).has('debug');
 
 function sheetIdFromConfig(){
   const m = (CONFIG.SHEET_VIEW_URL || '').match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -909,22 +926,38 @@ function normTxt(s){
   return (s ?? '').toString().toLowerCase().normalize('NFD')
     .replace(/[\u0300-\u036f]/g,'').replace(/²/g,'2').replace(/[^a-z0-9]+/g,' ').trim();
 }
+function setSyncBadge(ok, titulo, detalle){
+  const b = document.getElementById('syncBadge');
+  const t = document.getElementById('syncBadgeTxt');
+  if(!b || !t) return;
+  b.classList.toggle('ok', !!ok);
+  b.classList.toggle('err', ok === false);
+  t.innerHTML = detalle ? `${titulo}<br><small>${detalle}</small>` : titulo;
+  b.title = detalle || titulo;
+}
 async function fetchSheetTable(sheetName, tq){
   const id = sheetIdFromConfig();
-  if(!id) throw new Error('CONFIG.SHEET_VIEW_URL sin ID de planilla');
+  if(!id) throw new Error('CONFIG.SHEET_VIEW_URL no tiene un ID de planilla válido');
   let url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(sheetName)}`;
   if(tq) url += '&tq=' + encodeURIComponent(tq);
-  const resp = await fetch(url);
-  if(!resp.ok) throw new Error('HTTP ' + resp.status + ' en hoja ' + sheetName);
+  url += '&_cb=' + Date.now(); // anti-caché: fuerza leer el valor actual de la celda
+  const resp = await fetch(url, { cache:'no-store' });
+  if(!resp.ok) throw new Error(`HTTP ${resp.status} en hoja ${sheetName}`);
   const txt = await resp.text();
+  if(!txt.includes('google.visualization.Query.setResponse')){
+    throw new Error(`La hoja "${sheetName}" no devolvió datos (¿la planilla está compartida como "Cualquier persona con el vínculo - Lector"?)`);
+  }
   const json = JSON.parse(txt.substring(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
-  if(json.status === 'error') throw new Error(json.errors?.[0]?.detailed_message || 'Error gviz en ' + sheetName);
+  if(json.status === 'error'){
+    throw new Error(`Hoja "${sheetName}": ${(json.errors||[]).map(e=>e.detailed_message||e.message).join('; ') || 'error gviz'}`);
+  }
   return (json.table.rows || []).map(r => (r.c || []).map(c => (c && c.v != null) ? c.v : ''));
 }
 
 async function syncPreciosDesdeSheets(){
+  PRICES_SYNC.errores = []; PRICES_SYNC.detalle = [];
   try{
-    /* ---- MATERIALES ---- */
+    /* ---- MATERIALES: Config + AS_Catalogo ---- */
     const byCodigo = {}, byDesc = {};
     try{
       // Config: A Categoría | B Código | C Producto | D Unidad | E Precio | F Proveedor
@@ -936,7 +969,8 @@ async function syncPreciosDesdeSheets(){
         byCodigo[cod] = p;
         const nd = normTxt(r[2]); if(nd) byDesc[nd] = p;
       });
-    }catch(e){ console.warn('Hoja Config no leída:', e); }
+      PRICES_SYNC.detalle.push(`Config: ${cfg.length} filas`);
+    }catch(e){ PRICES_SYNC.errores.push(e.message); }
 
     try{
       // AS_Catalogo: A Descripción | B Código AS | E Precio Final c/IVA
@@ -948,7 +982,8 @@ async function syncPreciosDesdeSheets(){
         byCodigo[cod] = p;
         const nd = normTxt(r[0]); if(nd && !(nd in byDesc)) byDesc[nd] = p;
       });
-    }catch(e){ console.warn('Hoja AS_Catalogo no leída:', e); }
+      PRICES_SYNC.detalle.push(`AS_Catalogo: ${as.length} filas`);
+    }catch(e){ PRICES_SYNC.errores.push(e.message); }
 
     let nMat = 0;
     MATERIALS_RAW.forEach(m => {
@@ -956,12 +991,12 @@ async function syncPreciosDesdeSheets(){
       if(p && p > 0){ m.precio_lista = p; nMat++; }
     });
     MATERIALS_RAW.forEach(m => m.precio = m.precio_lista * (1 + MATERIALS_MARKUP));
-    if(nMat > 0) PRICES_SYNC.fuentes.push(`materiales (${nMat})`);
+    if(nMat > 0) PRICES_SYNC.fuentes.push(`materiales ${nMat}/${MATERIALS_RAW.length}`);
 
-    /* ---- MANO DE OBRA ---- */
+    /* ---- MANO DE OBRA: CMO_Precios_Web ---- */
     let nSvc = 0;
     try{
-      // CMO_Precios_Web: A Descripción | E Qué incluye | F Precio | I Materiales incluidos | J Nota
+      // A Descripción | E Qué incluye | F Precio | I Materiales incluidos | J Nota
       const cmo = await fetchSheetTable('CMO_Precios_Web', 'select A,E,F,I,J');
       const bySvc = {};
       cmo.forEach(r => {
@@ -971,34 +1006,46 @@ async function syncPreciosDesdeSheets(){
           bySvc[d] = { precio:p, incluye:String(r[1]||''), estado:normTxt(r[3]), nota:String(r[4]||'') };
         }
       });
+      const noMatch = [];
       SERVICES.forEach(sv => {
         const hit = bySvc[normTxt(sv.desc)];
         if(hit){
           sv.precio = hit.precio;
           if(hit.incluye) sv.incluye = hit.incluye;
-          if(hit.nota) sv.nota_materiales = hit.nota;
-          if(['si','no','parcial','na'].includes(hit.estado)) sv.materiales_estado = hit.estado;
+          sv.nota_materiales = hit.nota; // se pisa siempre: si la vaciaste en la planilla, queda vacía
+          if(['si','no','parcial','na'].includes(hit.estado)){
+            sv.materiales_estado = hit.estado;
+            sv.materiales_incluidos = (hit.estado === 'si');
+          }
           nSvc++;
+        }else{
+          noMatch.push(sv.desc);
         }
       });
-    }catch(e){ console.warn('Hoja CMO_Precios_Web no leída:', e); }
-    if(nSvc > 0) PRICES_SYNC.fuentes.push(`mano de obra (${nSvc})`);
+      PRICES_SYNC.detalle.push(`CMO_Precios_Web: ${cmo.length} filas, ${nSvc} servicios coincidentes`);
+      if(DEBUG_SYNC && noMatch.length) console.warn('[sync] Servicios sin coincidencia en la planilla:', noMatch);
+    }catch(e){ PRICES_SYNC.errores.push(e.message); }
+    if(nSvc > 0) PRICES_SYNC.fuentes.push(`mano de obra ${nSvc}/${SERVICES.length}`);
 
     PRICES_SYNC.actualizados = nMat + nSvc;
     if(PRICES_SYNC.actualizados > 0){
       PRICES_SYNC.ok = true;
-      // Re-render con precios nuevos conservando cantidades elegidas
       buildPanel();
       buildMaterialsCatalog();
       recalc();
-      showToast(`Precios actualizados desde Google Sheets: ${PRICES_SYNC.fuentes.join(' + ')} ✓`);
+      const hora = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      setSyncBadge(true, `Precios sincronizados con la planilla ✓ ${hora}`,
+        PRICES_SYNC.fuentes.join(' · ') + (PRICES_SYNC.errores.length ? ' — avisos: ' + PRICES_SYNC.errores.join(' | ') : ''));
+      showToast(`Precios actualizados desde Google Sheets (${PRICES_SYNC.actualizados} ítems) ✓`);
     }else{
-      showToast('La planilla no devolvió precios; se usan los precios guardados en la página.');
+      setSyncBadge(false, 'No se pudo leer precios de la planilla',
+        (PRICES_SYNC.errores.join(' | ') || 'Sin coincidencias') + ' — se usan los precios guardados en la página');
     }
   }catch(e){
-    console.warn('Sync de precios falló, usando precios embebidos:', e);
-    showToast('Sin acceso a la planilla: se muestran los últimos precios guardados.');
+    console.warn('[sync] Fallo general:', e);
+    setSyncBadge(false, 'Sin acceso a la planilla', e.message + ' — se usan los últimos precios guardados');
   }
+  if(DEBUG_SYNC) console.log('[sync] detalle:', PRICES_SYNC.detalle, 'errores:', PRICES_SYNC.errores);
 }
 
 buildPanel();
