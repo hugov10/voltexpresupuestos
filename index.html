@@ -734,7 +734,9 @@ function buildPanel(){
         parcial: '<span class="badge-mat parcial">🟡 Materiales parciales</span>',
         na:      '<span class="badge-mat na">🔧 Solo mano de obra</span>',
       };
-      const badge = badgeMap[s.materiales_estado] || badgeMap.no;
+      const estadoNorm = normalizeText_(s.materiales_estado).trim();
+      const estadoKey = estadoNorm === 'si' ? 'si' : estadoNorm === 'parcial' ? 'parcial' : (estadoNorm === 'na' || estadoNorm === 'n/a') ? 'na' : 'no';
+      const badge = badgeMap[estadoKey];
       const nota = s.nota_materiales ? `<div class="item-note">${s.nota_materiales}</div>` : '';
       const detalle = s.detalle ? `<details class="item-detalle"><summary>Ver detalle de la tarea</summary><div>${s.detalle}</div></details>` : '';
       ir.innerHTML = `
@@ -756,6 +758,7 @@ function buildPanel(){
       plus.addEventListener('click', () => {
         state.servicios[s.id]++; input.value = state.servicios[s.id];
         updateBreakerState(row, items); recalc();
+        marcarInteraccion_('servicio: ' + s.desc);
       });
       minus.addEventListener('click', () => {
         if(state.servicios[s.id] > 0) state.servicios[s.id]--;
@@ -878,6 +881,7 @@ function buildMaterialsCatalog(){
     const input = card.querySelector('input');
     card.querySelector('.qty-plus').addEventListener('click', () => {
       state.materiales[m.id]++; input.value = state.materiales[m.id]; recalc();
+      marcarInteraccion_('material: ' + m.desc);
     });
     card.querySelector('.qty-minus').addEventListener('click', () => {
       if(state.materiales[m.id] > 0) state.materiales[m.id]--;
@@ -900,7 +904,8 @@ function recalc(){
       totalItems += qty;
       const lineTotal = s.precio * qty;
       labor += lineTotal;
-      if(s.materiales_estado === 'no' || s.materiales_estado === 'parcial'){
+      const estadoNormCalc = normalizeText_(s.materiales_estado).trim();
+      if(estadoNormCalc === 'no' || estadoNormCalc === 'parcial'){
         hasExcludedMaterials = true;
         estLow += lineTotal * (MATERIALS_MARKUP_FALLBACK - 0.08);
         estHigh += lineTotal * (MATERIALS_MARKUP_FALLBACK + 0.08);
@@ -1031,6 +1036,32 @@ async function tryLoadLivePricing(){
   }
 }
 tryLoadLivePricing();
+
+/* ---------- Tracking anónimo (visitas e interacciones, sin datos personales) ---------- */
+function getSesionAnonima_(){
+  try{
+    let sid = sessionStorage.getItem('voltex_sid');
+    if(!sid){ sid = Math.random().toString(36).slice(2, 10); sessionStorage.setItem('voltex_sid', sid); }
+    return sid;
+  }catch(e){ return 'sin-sesion'; }
+}
+function enviarEventoAnonimo_(accion, detalle){
+  if(!CONFIG.SHEET_WEBHOOK_URL || CONFIG.SHEET_WEBHOOK_URL.includes('PEGAR_ACA')) return;
+  try{
+    fetch(CONFIG.SHEET_WEBHOOK_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ accion, detalle: detalle || '', sesion: getSesionAnonima_() })
+    });
+  }catch(e){ /* no molesta al usuario si falla */ }
+}
+let interaccionYaRegistrada = false;
+function marcarInteraccion_(detalle){
+  if(interaccionYaRegistrada) return;
+  interaccionYaRegistrada = true;
+  enviarEventoAnonimo_('interaccion', detalle);
+}
+enviarEventoAnonimo_('visita'); // una vez por carga de página, sin nombre ni datos personales
 
 /* ---------- Diagnostic quiz ---------- */
 const DIAGNOSTICS = [
